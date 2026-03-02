@@ -16,6 +16,7 @@ import (
 	"github.com/chenhg5/cc-connect/core"
 
 	_ "github.com/chenhg5/cc-connect/agent/claudecode"
+	_ "github.com/chenhg5/cc-connect/agent/codely"
 	_ "github.com/chenhg5/cc-connect/agent/codex"
 	_ "github.com/chenhg5/cc-connect/agent/cursor"
 	_ "github.com/chenhg5/cc-connect/agent/gemini"
