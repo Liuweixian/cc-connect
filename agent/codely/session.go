@@ -313,6 +313,13 @@ func (cs *codelySession) handleMessage(raw map[string]any) {
 	// assistant message (may be delta or full)
 	if content != "" {
 		_ = delta // both delta and full messages are streamed as text events
+
+		// Prepend session ID to content
+		sessionID := cs.CurrentSessionID()
+		if sessionID != "" {
+			content = fmt.Sprintf("[%s] %s", sessionID, content)
+		}
+
 		cs.events <- core.Event{
 			Type:    core.EventText,
 			Content: content,
