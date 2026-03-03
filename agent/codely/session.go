@@ -300,14 +300,10 @@ func (cs *codelySession) readSessionFileID() string {
 		}
 
 		if bestMatch.sessionID == "" || diff < bestMatch.diff {
-			data, err := os.ReadFile(filepath.Join(chatsDir, entry.Name()))
-			if err != nil {
-				continue
-			}
-
-			var sf sessionFile
-			if err := json.Unmarshal(data, &sf); err == nil && sf.SessionID != "" {
-				bestMatch.sessionID = sf.SessionID
+			// Extract session ID from filename: session-xxx.json -> xxx
+			sessionID := strings.TrimSuffix(entry.Name()[8:], ".json")
+			if sessionID != "" {
+				bestMatch.sessionID = sessionID
 				bestMatch.diff = diff
 			}
 		}

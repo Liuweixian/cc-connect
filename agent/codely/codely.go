@@ -2,7 +2,6 @@ package codely
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	"github.com/chenhg5/cc-connect/core"
@@ -224,21 +222,6 @@ func codelyProjectHash(workDir string) string {
 	return filepath.Base(abs)
 }
 
-// sessionFile represents the JSON structure of a Codely CLI session file.
-type sessionFile struct {
-	SessionID   string    `json:"sessionId"`
-	ProjectHash string    `json:"projectHash"`
-	StartTime   time.Time `json:"startTime"`
-	LastUpdated time.Time `json:"lastUpdated"`
-	Messages    []struct {
-		Type    string `json:"type"`
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	} `json:"messages"`
-	Kind string `json:"kind"`
-}
-
 func listCodelySessions(workDir string) ([]core.AgentSessionInfo, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -262,32 +245,33 @@ func listCodelySessions(workDir string) ([]core.AgentSessionInfo, error) {
 			continue
 		}
 
-		data, err := os.ReadFile(filepath.Join(chatsDir, entry.Name()))
+		// Extract session ID from filename: session-xxx.json -> xxx
+		filename := entry.Name()
+		if !strings.HasPrefix(filename, "session-") {
+			continue
+		}
+		sessionID := strings.TrimSuffix(filename[8:], ".json")
+		if sessionID == "" {
+			continue
+		}
+
+		// Get file modification time
+		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
 
-		var sf sessionFile
-		if json.Unmarshal(data, &sf) != nil || sf.SessionID == "" {
-			continue
-		}
-
-		summary := extractSessionSummary(&sf)
+		// Use session ID as summary
+		summary := sessionID
 		if utf8.RuneCountInString(summary) > 60 {
 			summary = string([]rune(summary)[:60]) + "..."
 		}
 
-		msgCount := len(sf.Messages)
-		modTime := sf.LastUpdated
-		if modTime.IsZero() {
-			modTime = sf.StartTime
-		}
-
 		sessions = append(sessions, core.AgentSessionInfo{
-			ID:           sf.SessionID,
+			ID:           sessionID,
 			Summary:      summary,
-			MessageCount: msgCount,
-			ModifiedAt:   modTime,
+			MessageCount: 0,
+			ModifiedAt:   info.ModTime(),
 		})
 	}
 
@@ -296,24 +280,4 @@ func listCodelySessions(workDir string) ([]core.AgentSessionInfo, error) {
 	})
 
 	return sessions, nil
-}
-
-// extractSessionSummary picks the first user message as the session summary.
-func extractSessionSummary(sf *sessionFile) string {
-	for _, msg := range sf.Messages {
-		if msg.Type != "user" {
-			continue
-		}
-		for _, c := range msg.Content {
-			text := strings.TrimSpace(c.Text)
-			if text != "" {
-				lines := strings.SplitN(text, "\n", 2)
-				return strings.TrimSpace(lines[0])
-			}
-		}
-	}
-	if len(sf.SessionID) > 12 {
-		return sf.SessionID[:12] + "..."
-	}
-	return sf.SessionID
 }
