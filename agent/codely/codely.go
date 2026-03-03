@@ -2,6 +2,8 @@ package codely
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
@@ -213,18 +215,20 @@ func (a *Agent) providerEnvLocked() []string {
 // ── Session listing ─────────────────────────────────────────────
 
 // codelyProjectHash computes the directory name Codely CLI uses under ~/.codely-cli/tmp/.
-// Codely uses a hash of the absolute project path.
+// Codely uses a SHA256 hash of the absolute project path.
 func codelyProjectHash(workDir string) string {
 	abs, err := filepath.Abs(workDir)
 	if err != nil {
 		abs = workDir
 	}
-	return filepath.Base(abs)
+	hash := sha256.Sum256([]byte(abs))
+	return hex.EncodeToString(hash[:])
 }
 
 func listCodelySessions(workDir string) ([]core.AgentSessionInfo, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		slog.Error("codely: cannot determine home dir", "error", err)
 		return nil, fmt.Errorf("codely: cannot determine home dir: %w", err)
 	}
 
@@ -236,6 +240,7 @@ func listCodelySessions(workDir string) ([]core.AgentSessionInfo, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
+		slog.Error("codely: read chats dir failed", "chatsDir", chatsDir, "error", err)
 		return nil, fmt.Errorf("codely: read chats dir: %w", err)
 	}
 
