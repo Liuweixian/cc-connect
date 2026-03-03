@@ -105,15 +105,15 @@ func (cs *codelySession) Send(prompt string, images []core.ImageAttachment) erro
 		args = append(args, "--approval-mode", "plan")
 	}
 
-	if isResume {
-		args = append(args, "--resume", chatID)
-	}
 	if cs.model != "" {
 		args = append(args, "-m", cs.model)
 	}
 
 	// Build the prompt with image file references
 	fullPrompt := prompt
+	if isResume {
+		fullPrompt = "/resume " + chatID + " " + prompt
+	}
 	if len(imageRefs) > 0 {
 		fullPrompt = strings.Join(imageRefs, " ") + " " + prompt
 	}
@@ -246,28 +246,27 @@ func (cs *codelySession) handleInit(raw map[string]any) {
 
 // readSessionFileID reads the full sessionId from the most recent session file
 func (cs *codelySession) readSessionFileID() string {
-	initTime, ok := cs.initTime.Load().(time.Time)
-	if !ok {
-		return ""
-	}
-
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		slog.Debug("codelySession: readSessionFileID - failed to get home dir", "error", err)
 		return ""
 	}
 
 	projName := codelyProjectHash(cs.workDir)
 	chatsDir := filepath.Join(homeDir, ".codely-cli", "tmp", projName, "chats")
+	slog.Debug("codelySession: readSessionFileID - chats dir", "dir", chatsDir)
 
 	entries, err := os.ReadDir(chatsDir)
 	if err != nil {
+		slog.Debug("codelySession: readSessionFileID - failed to read chats dir", "error", err)
 		return ""
 	}
+	slog.Debug("codelySession: readSessionFileID - found entries", "count", len(entries))
 
-	// Find the most recent session file that matches the init time
+	// Find the most recent session file by modification time
 	var bestMatch struct {
-		sessionID string
-		diff      time.Duration
+		sessionID  string
+		modTime    time.Time
 	}
 
 	for _, entry := range entries {
@@ -275,40 +274,30 @@ func (cs *codelySession) readSessionFileID() string {
 			continue
 		}
 
-		// Parse timestamp from filename: session-2026-03-03-10-15-59-338-488ecca7.json
-		// Extract the date-time part: 2026-03-03-10-15-59
-		parts := strings.Split(entry.Name(), "-")
-		if len(parts) < 7 {
+		filename := entry.Name()
+		if !strings.HasPrefix(filename, "session-") {
 			continue
 		}
 
-		layout := "2006-01-02-15-04-05"
-		fileTimeStr := strings.Join(parts[1:7], "-")
-		fileTime, err := time.Parse(layout, fileTimeStr)
+		// Extract session ID from filename: session-xxx.json -> xxx
+		sessionID := strings.TrimSuffix(filename[8:], ".json")
+		if sessionID == "" {
+			continue
+		}
+
+		// Get file modification time
+		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
 
-		diff := fileTime.Sub(initTime)
-		if diff < 0 {
-			diff = -diff
-		}
-
-		// Only consider files within 5 seconds of init time
-		if diff > 5*time.Second {
-			continue
-		}
-
-		if bestMatch.sessionID == "" || diff < bestMatch.diff {
-			// Extract session ID from filename: session-xxx.json -> xxx
-			sessionID := strings.TrimSuffix(entry.Name()[8:], ".json")
-			if sessionID != "" {
-				bestMatch.sessionID = sessionID
-				bestMatch.diff = diff
-			}
+		if bestMatch.sessionID == "" || info.ModTime().After(bestMatch.modTime) {
+			bestMatch.sessionID = sessionID
+			bestMatch.modTime = info.ModTime()
 		}
 	}
 
+	slog.Debug("codelySession: readSessionFileID - result", "sessionID", bestMatch.sessionID)
 	return bestMatch.sessionID
 }
 
