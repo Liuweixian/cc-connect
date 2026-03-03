@@ -57,6 +57,8 @@ func newCodelySession(ctx context.Context, cmd, workDir, model, mode, resumeID s
 		cs.chatID.Store(resumeID)
 	}
 
+	slog.Debug("codelySession: newCodelySession", "resumeID", resumeID)
+
 	return cs, nil
 }
 
@@ -120,7 +122,7 @@ func (cs *codelySession) Send(prompt string, images []core.ImageAttachment) erro
 
 	args = append(args, "-p", fullPrompt)
 
-	slog.Debug("codelySession: launching", "resume", isResume, "args", args)
+	slog.Debug("codelySession: launching", "args", args)
 
 	cmd := exec.CommandContext(cs.ctx, cs.cmd, args...)
 	cmd.Dir = cs.workDir
@@ -222,12 +224,11 @@ func (cs *codelySession) handleInit(raw map[string]any) {
 	timestamp, _ := raw["timestamp"].(string)
 
 	if sid != "" {
-		cs.chatID.Store(sid)
 		cs.initTime.Store(time.Now())
-		slog.Debug("codelySession: session init", "session_id", sid, "model", model, "timestamp", timestamp)
 
 		// Try to read the actual sessionId from the session file
 		// The init event contains a short ID, but the session file stores the full UUID
+		time.Sleep(2 * time.Second)
 		actualSessionID := cs.readSessionFileID()
 		if actualSessionID != "" {
 			cs.chatID.Store(actualSessionID)
@@ -235,9 +236,11 @@ func (cs *codelySession) handleInit(raw map[string]any) {
 			sid = actualSessionID
 		}
 
+		slog.Debug("codelySession: session init", "session_id", actualSessionID, "model", model, "timestamp", timestamp)
+
 		cs.events <- core.Event{
 			Type:      core.EventText,
-			SessionID: sid,
+			SessionID: actualSessionID,
 			Content:   "",
 			ToolName:  model,
 		}
@@ -313,12 +316,6 @@ func (cs *codelySession) handleMessage(raw map[string]any) {
 	// assistant message (may be delta or full)
 	if content != "" {
 		_ = delta // both delta and full messages are streamed as text events
-
-		// Prepend session ID to content
-		sessionID := cs.CurrentSessionID()
-		if sessionID != "" {
-			content = fmt.Sprintf("[%s] %s", sessionID, content)
-		}
 
 		cs.events <- core.Event{
 			Type:    core.EventText,
