@@ -10,9 +10,11 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode/utf8"
 
 	"github.com/chenhg5/cc-connect/core"
@@ -33,6 +35,7 @@ type codelySession struct {
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
 	alive    atomic.Bool
+	initTime atomic.Value // stores time.Time — session init time
 }
 
 func newCodelySession(ctx context.Context, cmd, workDir, model, mode, resumeID string, extraEnv []string) (*codelySession, error) {
@@ -216,10 +219,21 @@ func (cs *codelySession) handleEvent(raw map[string]any) {
 func (cs *codelySession) handleInit(raw map[string]any) {
 	sid, _ := raw["session_id"].(string)
 	model, _ := raw["model"].(string)
+	timestamp, _ := raw["timestamp"].(string)
 
 	if sid != "" {
 		cs.chatID.Store(sid)
-		slog.Debug("codelySession: session init", "session_id", sid, "model", model)
+		cs.initTime.Store(time.Now())
+		slog.Debug("codelySession: session init", "session_id", sid, "model", model, "timestamp", timestamp)
+
+		// Try to read the actual sessionId from the session file
+		// The init event contains a short ID, but the session file stores the full UUID
+		actualSessionID := cs.readSessionFileID()
+		if actualSessionID != "" {
+			cs.chatID.Store(actualSessionID)
+			slog.Debug("codelySession: using actual session ID from file", "session_id", actualSessionID)
+			sid = actualSessionID
+		}
 
 		cs.events <- core.Event{
 			Type:      core.EventText,
@@ -228,6 +242,78 @@ func (cs *codelySession) handleInit(raw map[string]any) {
 			ToolName:  model,
 		}
 	}
+}
+
+// readSessionFileID reads the full sessionId from the most recent session file
+func (cs *codelySession) readSessionFileID() string {
+	initTime, ok := cs.initTime.Load().(time.Time)
+	if !ok {
+		return ""
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	projName := codelyProjectHash(cs.workDir)
+	chatsDir := filepath.Join(homeDir, ".codely-cli", "tmp", projName, "chats")
+
+	entries, err := os.ReadDir(chatsDir)
+	if err != nil {
+		return ""
+	}
+
+	// Find the most recent session file that matches the init time
+	var bestMatch struct {
+		sessionID string
+		diff      time.Duration
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+
+		// Parse timestamp from filename: session-2026-03-03-10-15-59-338-488ecca7.json
+		// Extract the date-time part: 2026-03-03-10-15-59
+		parts := strings.Split(entry.Name(), "-")
+		if len(parts) < 7 {
+			continue
+		}
+
+		layout := "2006-01-02-15-04-05"
+		fileTimeStr := strings.Join(parts[1:7], "-")
+		fileTime, err := time.Parse(layout, fileTimeStr)
+		if err != nil {
+			continue
+		}
+
+		diff := fileTime.Sub(initTime)
+		if diff < 0 {
+			diff = -diff
+		}
+
+		// Only consider files within 5 seconds of init time
+		if diff > 5*time.Second {
+			continue
+		}
+
+		if bestMatch.sessionID == "" || diff < bestMatch.diff {
+			data, err := os.ReadFile(filepath.Join(chatsDir, entry.Name()))
+			if err != nil {
+				continue
+			}
+
+			var sf sessionFile
+			if err := json.Unmarshal(data, &sf); err == nil && sf.SessionID != "" {
+				bestMatch.sessionID = sf.SessionID
+				bestMatch.diff = diff
+			}
+		}
+	}
+
+	return bestMatch.sessionID
 }
 
 func (cs *codelySession) handleMessage(raw map[string]any) {
