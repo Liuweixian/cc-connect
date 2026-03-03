@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
@@ -89,9 +90,9 @@ func main() {
 	}
 
 	config.ConfigPath = configPath
-	slog.Info("config loaded", "path", configPath)
 
 	setupLogger(cfg.Log.Level)
+	slog.Info("config loaded", "path", configPath)
 
 	engines := make([]*core.Engine, 0, len(cfg.Projects))
 
@@ -366,6 +367,72 @@ app_secret = "your-feishu-app-secret"
 	return os.WriteFile(path, []byte(tmpl), 0o644)
 }
 
+// ANSI color codes
+const (
+	colorReset  = "\x1b[0m"
+	colorRed    = "\x1b[31m"
+	colorYellow = "\x1b[33m"
+	colorGreen  = "\x1b[32m"
+	colorGray   = "\x1b[90m"
+)
+
+// customHandler implements slog.Handler for custom log format
+type customHandler struct {
+	opts slog.HandlerOptions
+}
+
+func (h *customHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return level >= h.opts.Level.Level()
+}
+
+func (h *customHandler) Handle(ctx context.Context, r slog.Record) error {
+	var levelStr string
+	var levelColor string
+	switch r.Level {
+	case slog.LevelDebug:
+		levelStr = "DEBUG"
+		levelColor = colorGray
+	case slog.LevelInfo:
+		levelStr = "INFO"
+		levelColor = colorGreen
+	case slog.LevelWarn:
+		levelStr = "WARN"
+		levelColor = colorYellow
+	case slog.LevelError:
+		levelStr = "ERROR"
+		levelColor = colorRed
+	default:
+		levelStr = r.Level.String()
+		levelColor = colorReset
+	}
+
+	timeStr := r.Time.Format("2006-01-02T15:04:05.000-07:00")
+
+	// Build attributes string
+	var attrs []string
+	r.Attrs(func(a slog.Attr) bool {
+		attrs = append(attrs, fmt.Sprintf("(%s: %v)", a.Key, a.Value))
+		return true
+	})
+
+	// Format: [time][level]msg key=value ...
+	// Color only the level part
+	fmt.Printf("[%s][%s%s%s]%s", timeStr, levelColor, levelStr, colorReset, r.Message)
+	if len(attrs) > 0 {
+		fmt.Printf(" %s", strings.Join(attrs, " "))
+	}
+	fmt.Println()
+	return nil
+}
+
+func (h *customHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &customHandler{opts: h.opts}
+}
+
+func (h *customHandler) WithGroup(name string) slog.Handler {
+	return &customHandler{opts: h.opts}
+}
+
 func setupLogger(level string) {
 	var logLevel slog.Level
 	switch level {
@@ -378,7 +445,5 @@ func setupLogger(level string) {
 	default:
 		logLevel = slog.LevelInfo
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	})))
+	slog.SetDefault(slog.New(&customHandler{opts: slog.HandlerOptions{Level: logLevel}}))
 }
