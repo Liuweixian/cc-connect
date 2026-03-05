@@ -162,6 +162,11 @@ func main() {
 			engine.SetDisplayConfig(dcfg)
 		}
 
+		// Set work directory from config
+		if workDir, ok := proj.Agent.Options["work_dir"].(string); ok {
+			engine.SetWorkDir(workDir)
+		}
+
 		// Wire speech-to-text if enabled
 		if cfg.Speech.Enabled {
 			speechCfg := core.SpeechCfg{
@@ -216,6 +221,9 @@ func main() {
 		})
 		engine.SetProviderRemoveSaveFunc(func(name string) error {
 			return config.RemoveProviderFromConfig(projName, name)
+		})
+		engine.SetWorkDirSaveFunc(func(workDir string) error {
+			return config.SaveWorkDir(projName, workDir)
 		})
 
 		engines = append(engines, engine)

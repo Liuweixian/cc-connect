@@ -43,9 +43,13 @@ type Engine struct {
 	speech    SpeechCfg
 	display   DisplayCfg
 
+	workDir string // current working directory for the project
+
 	providerSaveFunc       func(providerName string) error
 	providerAddSaveFunc    func(p ProviderConfig) error
 	providerRemoveSaveFunc func(name string) error
+
+	workDirSaveFunc func(workDir string) error
 
 	cronScheduler *CronScheduler
 
@@ -113,6 +117,29 @@ func (e *Engine) SetProviderAddSaveFunc(fn func(ProviderConfig) error) {
 
 func (e *Engine) SetProviderRemoveSaveFunc(fn func(string) error) {
 	e.providerRemoveSaveFunc = fn
+}
+
+func (e *Engine) SetWorkDirSaveFunc(fn func(workDir string) error) {
+	e.workDirSaveFunc = fn
+}
+
+// SetWorkDir sets the working directory for the project.
+func (e *Engine) SetWorkDir(workDir string) error {
+	absPath, err := filepath.Abs(workDir)
+	if err != nil {
+		return fmt.Errorf("resolve absolute path: %w", err)
+	}
+	// Check if directory exists and is accessible
+	if _, err := os.Stat(absPath); err != nil {
+		return fmt.Errorf("directory not accessible: %w", err)
+	}
+	e.workDir = absPath
+	slog.Info("engine: work directory changed", "project", e.name, "workDir", absPath)
+	return nil
+}
+
+func (e *Engine) GetWorkDir() string {
+	return e.workDir
 }
 
 func (e *Engine) SetCronScheduler(cs *CronScheduler) {
@@ -667,6 +694,8 @@ func (e *Engine) handleCommand(p Platform, msg *Message, raw string) {
 		e.cmdMemory(p, msg, args)
 	case "/cron":
 		e.cmdCron(p, msg, args)
+	case "/workdir":
+		e.cmdWorkDir(p, msg, args)
 	case "/stop":
 		e.cmdStop(p, msg)
 	case "/help":
@@ -949,6 +978,40 @@ func (e *Engine) cmdQuiet(p Platform, msg *Message) {
 	} else {
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgQuietOff))
 	}
+}
+
+func (e *Engine) cmdWorkDir(p Platform, msg *Message, args []string) {
+	if len(args) == 0 {
+		// Show current work directory
+		current := e.GetWorkDir()
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf("📁 Current work directory: %s", current))
+		return
+	}
+
+	// Save old directory before changing
+	oldDir := e.GetWorkDir()
+
+	// Try to change work directory
+	newDir := strings.TrimSpace(args[0])
+	if err := e.SetWorkDir(newDir); err != nil {
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf("❌ Failed to change work directory: %v", err))
+		return
+	}
+
+	// Log the change with both old and new directories
+	slog.Info("work directory changed", "project", e.name, "from", oldDir, "to", e.GetWorkDir())
+
+	// Cleanup interactive state to force new session with new workDir
+	e.cleanupInteractiveState(msg.SessionKey)
+
+	// Persist to config
+	if e.workDirSaveFunc != nil {
+		if err := e.workDirSaveFunc(e.GetWorkDir()); err != nil {
+			slog.Error("failed to save work directory", "error", err)
+		}
+	}
+
+	e.reply(p, msg.ReplyCtx, fmt.Sprintf("✅ Work directory changed to: %s\n\nNote: A new session will be created for the next message.", e.GetWorkDir()))
 }
 
 func (e *Engine) cmdStop(p Platform, msg *Message) {

@@ -282,3 +282,28 @@ func GetProjectProviders(projectName string) ([]ProviderConfig, string, error) {
 	}
 	return nil, "", fmt.Errorf("project %q not found", projectName)
 }
+
+// SaveWorkDir persists the work directory for a project.
+func SaveWorkDir(projectName, workDir string) error {
+	if ConfigPath == "" {
+		return fmt.Errorf("config path not set")
+	}
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+	cfg := &Config{}
+	if err := toml.Unmarshal(data, cfg); err != nil {
+		return fmt.Errorf("parse config: %w", err)
+	}
+	for i := range cfg.Projects {
+		if cfg.Projects[i].Name == projectName {
+			if cfg.Projects[i].Agent.Options == nil {
+				cfg.Projects[i].Agent.Options = make(map[string]any)
+			}
+			cfg.Projects[i].Agent.Options["work_dir"] = workDir
+			break
+		}
+	}
+	return saveConfig(cfg)
+}
