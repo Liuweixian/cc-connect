@@ -107,15 +107,16 @@ func (cs *codelySession) Send(prompt string, images []core.ImageAttachment) erro
 		args = append(args, "--approval-mode", "plan")
 	}
 
+	if isResume {
+		args = append(args, "--resume-session", chatID)
+	}
+
 	if cs.model != "" {
 		args = append(args, "-m", cs.model)
 	}
 
 	// Build the prompt with image file references
 	fullPrompt := prompt
-	if isResume {
-		fullPrompt = "/resume " + chatID + " " + prompt
-	}
 	if len(imageRefs) > 0 {
 		fullPrompt = strings.Join(imageRefs, " ") + " " + prompt
 	}
