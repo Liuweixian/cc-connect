@@ -256,7 +256,11 @@ func (e *Engine) handleMessage(p Platform, msg *Message) {
 		return
 	}
 
-	if len(msg.Images) == 0 && strings.HasPrefix(content, "/") {
+	// Handle escape prefix: !/command -> send to agent as-is
+	if len(msg.Images) == 0 && strings.HasPrefix(content, "!/") {
+		// Remove the ! prefix and treat as normal message
+		msg.Content = strings.TrimSpace(content[1:])
+	} else if len(msg.Images) == 0 && strings.HasPrefix(content, "/") {
 		e.handleCommand(p, msg, content)
 		return
 	}

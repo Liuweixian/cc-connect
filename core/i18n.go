@@ -283,6 +283,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/cron [add|list|del|enable|disable]\n  Manage scheduled tasks\n\n" +
 			"/version\n  Show cc-connect version\n\n" +
 			"/help\n  Show this help\n\n" +
+			"Prefix ! before a command to send it to the agent (e.g., !/model list)\n\n" +
 			"Permission modes: default / edit / plan / yolo",
 		LangChinese: "📖 可用命令\n\n" +
 			"/new [名称]\n  创建新会话\n\n" +
@@ -301,6 +302,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/cron [add|list|del|enable|disable]\n  管理定时任务\n\n" +
 			"/version\n  查看 cc-connect 版本\n\n" +
 			"/help\n  显示此帮助\n\n" +
+			"在命令前加 ! 前缀可发送给 Agent（如：!/model list）\n\n" +
 			"权限模式：default / edit / plan / yolo",
 	},
 	MsgListTitle: {
