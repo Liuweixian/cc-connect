@@ -278,6 +278,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/mode [name]\n  View/switch permission mode\n\n" +
 			"/lang [en|zh|auto]\n  View/switch language\n\n" +
 			"/quiet\n  Toggle thinking/tool progress\n\n" +
+			"/workdir [path]\n  View/change work directory\n\n" +
 			"/stop\n  Stop current execution\n\n" +
 			"/cron [add|list|del|enable|disable]\n  Manage scheduled tasks\n\n" +
 			"/version\n  Show cc-connect version\n\n" +
@@ -295,6 +296,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/mode [名称]\n  查看/切换权限模式\n\n" +
 			"/lang [en|zh|auto]\n  查看/切换语言\n\n" +
 			"/quiet\n  开关思考和工具进度消息\n\n" +
+			"/workdir [路径]\n  查看/修改工作目录\n\n" +
 			"/stop\n  停止当前执行\n\n" +
 			"/cron [add|list|del|enable|disable]\n  管理定时任务\n\n" +
 			"/version\n  查看 cc-connect 版本\n\n" +
