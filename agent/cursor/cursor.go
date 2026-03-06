@@ -126,6 +126,21 @@ func (a *Agent) GetMode() string {
 	return a.mode
 }
 
+// ── WorkDirSetter ────────────────────────────────────────────────
+
+func (a *Agent) SetWorkDir(workDir string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.workDir = workDir
+	slog.Info("cursor: work directory changed", "workDir", workDir)
+}
+
+func (a *Agent) GetWorkDir() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.workDir
+}
+
 func (a *Agent) PermissionModes() []core.PermissionModeInfo {
 	return []core.PermissionModeInfo{
 		{Key: "default", Name: "Default", NameZh: "默认", Desc: "Trust workspace, ask before tool use", DescZh: "信任工作区，工具调用前询问"},

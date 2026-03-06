@@ -148,6 +148,12 @@ type ModeSwitcher interface {
 	PermissionModes() []PermissionModeInfo
 }
 
+// WorkDirSetter is an optional interface for agents that support runtime work directory switching.
+type WorkDirSetter interface {
+	SetWorkDir(workDir string)
+	GetWorkDir() string
+}
+
 // PermissionModeInfo describes a permission mode for display.
 type PermissionModeInfo struct {
 	Key    string

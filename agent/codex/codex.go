@@ -116,6 +116,21 @@ func (a *Agent) GetMode() string {
 	return a.mode
 }
 
+// SetWorkDir changes the working directory for future sessions.
+func (a *Agent) SetWorkDir(workDir string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.workDir = workDir
+	slog.Info("codex: work directory changed", "workDir", workDir)
+}
+
+// GetWorkDir returns the current working directory.
+func (a *Agent) GetWorkDir() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.workDir
+}
+
 // ── MemoryFileProvider implementation ─────────────────────────
 
 func (a *Agent) ProjectMemoryFile() string {

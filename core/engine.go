@@ -134,6 +134,12 @@ func (e *Engine) SetWorkDir(workDir string) error {
 		return fmt.Errorf("directory not accessible: %w", err)
 	}
 	e.workDir = absPath
+
+	// Update agent workDir if it supports WorkDirSetter
+	if wd, ok := e.agent.(WorkDirSetter); ok {
+		wd.SetWorkDir(absPath)
+	}
+
 	slog.Info("engine: work directory changed", "project", e.name, "workDir", absPath)
 	return nil
 }

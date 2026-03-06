@@ -220,6 +220,21 @@ func (a *Agent) GetMode() string {
 	return a.mode
 }
 
+// SetWorkDir changes the working directory for future sessions.
+func (a *Agent) SetWorkDir(workDir string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.workDir = workDir
+	slog.Info("claudecode: work directory changed", "workDir", workDir)
+}
+
+// GetWorkDir returns the current working directory.
+func (a *Agent) GetWorkDir() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.workDir
+}
+
 // PermissionModes returns all supported permission modes.
 func (a *Agent) PermissionModes() []core.PermissionModeInfo {
 	return []core.PermissionModeInfo{
