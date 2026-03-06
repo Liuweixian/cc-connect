@@ -121,7 +121,8 @@ func (cs *codelySession) Send(prompt string, images []core.ImageAttachment) erro
 		fullPrompt = strings.Join(imageRefs, " ") + " " + prompt
 	}
 
-	args = append(args, "-p", fullPrompt)
+	// Wrap prompt in quotes to handle spaces and special characters
+	args = append(args, "-p", fmt.Sprintf("%q", fullPrompt))
 
 	slog.Debug("codelySession: launching", "args", args)
 
