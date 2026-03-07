@@ -227,6 +227,69 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 			ReplyCtx: rctx,
 		})
 
+	case "post":
+		var postBody struct {
+			Title   string `json:"title,omitempty"`
+			Content [][]struct {
+				Tag      string `json:"tag"`
+				Text     string `json:"text,omitempty"`
+				Href     string `json:"href,omitempty"`
+				ImageKey string `json:"image_key,omitempty"` // img tag has image_key at top level
+				Height   int    `json:"height,omitempty"`    // img tag has height at top level
+				Width    int    `json:"width,omitempty"`     // img tag has width at top level
+			} `json:"content"`
+		}
+		if err := json.Unmarshal([]byte(*msg.Content), &postBody); err != nil {
+			slog.Error("feishu: failed to parse post content", "error", err)
+			return nil
+		}
+
+		// Debug: print post content structure
+		slog.Debug("feishu: post message parsed", "raw_content", *msg.Content, "post_body", fmt.Sprintf("%+v", postBody))
+
+		// Extract content while preserving the order of text and images
+		// Use placeholders for images: @IMAGE:{index}@
+		var contentParts []string
+		var images []core.ImageAttachment
+		imgIndex := 0
+
+		for _, paragraph := range postBody.Content {
+			for _, element := range paragraph {
+				if element.Tag == "text" && element.Text != "" {
+					contentParts = append(contentParts, element.Text)
+				} else if element.Tag == "a" && element.Text != "" {
+					contentParts = append(contentParts, element.Text)
+					if element.Href != "" {
+						contentParts = append(contentParts, fmt.Sprintf("(%s)", element.Href))
+					}
+				} else if element.Tag == "img" && element.ImageKey != "" {
+					imgData, mimeType, err := p.downloadImage(messageID, element.ImageKey)
+					if err != nil {
+						slog.Error("feishu: download post image failed", "error", err)
+						continue
+					}
+					// Add placeholder for this image
+					contentParts = append(contentParts, fmt.Sprintf("@IMAGE:%d@", imgIndex))
+					images = append(images, core.ImageAttachment{MimeType: mimeType, Data: imgData})
+					imgIndex++
+				}
+			}
+		}
+
+		content := strings.Join(contentParts, "")
+		if content == "" && len(images) == 0 {
+			slog.Debug("feishu: empty post message", "user_id", userID, "message_id", messageID)
+			return nil
+		}
+
+		p.handler(p, &core.Message{
+			SessionKey: sessionKey, Platform: "feishu",
+			UserID: userID, UserName: userName,
+			Content: content,
+			Images:  images,
+			ReplyCtx: rctx,
+		})
+
 	default:
 		slog.Debug("feishu: ignoring unsupported message type", "type", msgType)
 	}

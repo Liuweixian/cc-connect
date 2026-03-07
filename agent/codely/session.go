@@ -67,26 +67,23 @@ func (cs *codelySession) Send(prompt string, images []core.ImageAttachment) erro
 		return fmt.Errorf("session is closed")
 	}
 
-	// Codely CLI supports @file references for images; save to temp files
+	// Codely CLI supports @file references for images; save to clipboard directory
 	var imageRefs []string
 	if len(images) > 0 {
-		tmpDir := os.TempDir()
-		for i, img := range images {
-			ext := ".png"
-			switch img.MimeType {
-			case "image/jpeg":
-				ext = ".jpg"
-			case "image/gif":
-				ext = ".gif"
-			case "image/webp":
-				ext = ".webp"
-			}
-			fname := fmt.Sprintf("cc-connect-img-%d%s", i, ext)
-			fpath := fmt.Sprintf("%s/%s", tmpDir, fname)
+		clipboardDir := filepath.Join(cs.workDir, ".codely-cli", "clipboard")
+		if err := os.MkdirAll(clipboardDir, 0o755); err != nil {
+			slog.Error("codelySession: failed to create clipboard directory", "error", err)
+			return fmt.Errorf("codelySession: create clipboard dir: %w", err)
+		}
+		for _, img := range images {
+			timestamp := time.Now().UnixMilli()
+			fname := fmt.Sprintf("clipboard-%d.png", timestamp)
+			fpath := filepath.Join(clipboardDir, fname)
 			if err := os.WriteFile(fpath, img.Data, 0o644); err != nil {
 				slog.Warn("codelySession: failed to save image", "error", err)
 				continue
 			}
+			slog.Info("Screenshot saved", "path", fpath)
 			imageRefs = append(imageRefs, fpath)
 		}
 	}
@@ -118,7 +115,26 @@ func (cs *codelySession) Send(prompt string, images []core.ImageAttachment) erro
 	// Build the prompt with image file references
 	fullPrompt := prompt
 	if len(imageRefs) > 0 {
-		fullPrompt = strings.Join(imageRefs, " ") + " " + prompt
+		// Check if prompt contains @IMAGE:{index}@ placeholders
+		// If yes, replace them with actual image paths to preserve order
+		if strings.Contains(prompt, "@IMAGE:") {
+			for i, ref := range imageRefs {
+				placeholder := fmt.Sprintf("@IMAGE:%d@", i)
+				if strings.Contains(fullPrompt, placeholder) {
+					fullPrompt = strings.ReplaceAll(fullPrompt, placeholder, "@"+ref)
+				}
+			}
+			// Remove any remaining placeholders (in case of mismatch)
+			fullPrompt = strings.ReplaceAll(fullPrompt, "@IMAGE:", "")
+			fullPrompt = strings.ReplaceAll(fullPrompt, "@", "")
+		} else {
+			// Backward compatible: if no placeholders, prepend all image refs
+			var refParts []string
+			for _, ref := range imageRefs {
+				refParts = append(refParts, "@"+ref)
+			}
+			fullPrompt = strings.Join(refParts, " ") + " " + prompt
+		}
 	}
 
 	// Wrap prompt in quotes to handle spaces and special characters
@@ -155,10 +171,7 @@ func (cs *codelySession) Send(prompt string, images []core.ImageAttachment) erro
 func (cs *codelySession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBuf *bytes.Buffer, tempImages []string) {
 	defer cs.wg.Done()
 	defer func() {
-		// Clean up temp image files
-		for _, f := range tempImages {
-			os.Remove(f)
-		}
+		// Image files are persisted in clipboard directory, no cleanup needed
 		if err := cmd.Wait(); err != nil {
 			stderrMsg := strings.TrimSpace(stderrBuf.String())
 			if stderrMsg != "" {
