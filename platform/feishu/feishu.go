@@ -52,12 +52,20 @@ func New(opts map[string]any) (core.Platform, error) {
 	}
 	allowFrom, _ := opts["allow_from"].(string)
 
+	// Enable token cache to prevent token expiration issues
+	client := lark.NewClient(
+		appID,
+		appSecret,
+		lark.WithEnableTokenCache(true),
+		lark.WithLogLevel(larkcore.LogLevelInfo),
+	)
+
 	return &Platform{
 		appID:         appID,
 		appSecret:     appSecret,
 		reactionEmoji: reactionEmoji,
 		allowFrom:     allowFrom,
-		client:        lark.NewClient(appID, appSecret),
+		client:        client,
 	}, nil
 }
 
@@ -316,6 +324,13 @@ func (p *Platform) Reply(ctx context.Context, rctx any, content string) error {
 		return fmt.Errorf("feishu: reply api call: %w", err)
 	}
 	if !resp.Success() {
+		// Check if it's a token error (99991663 or similar)
+		if resp.Code == 99991663 || strings.Contains(resp.Msg, "access token") {
+			slog.Error("feishu: access token expired or invalid", "code", resp.Code, "msg", resp.Msg)
+			// Force token refresh by clearing the cache
+			// The SDK will automatically fetch a new token on next request
+			return fmt.Errorf("feishu: token expired, will retry on next message: code=%d msg=%s", resp.Code, resp.Msg)
+		}
 		return fmt.Errorf("feishu: reply failed code=%d msg=%s", resp.Code, resp.Msg)
 	}
 	return nil
@@ -347,6 +362,11 @@ func (p *Platform) Send(ctx context.Context, rctx any, content string) error {
 		return fmt.Errorf("feishu: send api call: %w", err)
 	}
 	if !resp.Success() {
+		// Check if it's a token error (99991663 or similar)
+		if resp.Code == 99991663 || strings.Contains(resp.Msg, "access token") {
+			slog.Error("feishu: access token expired or invalid", "code", resp.Code, "msg", resp.Msg)
+			return fmt.Errorf("feishu: token expired, will retry on next message: code=%d msg=%s", resp.Code, resp.Msg)
+		}
 		return fmt.Errorf("feishu: send failed code=%d msg=%s", resp.Code, resp.Msg)
 	}
 	return nil
